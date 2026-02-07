@@ -10,6 +10,9 @@ from services.retrieval import generate_answer, retrieve_chunks
 load_dotenv()
 
 
+MAX_QUERIES = 3  # Limit queries in the demo to prevent abuse and control costs
+
+
 def _require_env(var_name: str) -> str:
     """Return env var or empty string if missing."""
     return os.getenv(var_name, "").strip()
@@ -270,6 +273,9 @@ def main() -> None:
     if not _check_required_env():
         st.stop()
 
+    if "queries" not in st.session_state:
+        st.session_state.queries = 0
+
     if "namespace" not in st.session_state:
         st.session_state.namespace = None
 
@@ -285,6 +291,11 @@ def main() -> None:
             )
 
     if process_btn and uploaded is not None:
+        if st.session_state.queries >= MAX_QUERIES:
+            st.error("Demo limit reached. Please refresh to try again.")
+            st.stop()
+
+        st.session_state.queries += 1
         namespace = latest_namespace
         with st.spinner("Extracting, chunking, embedding, and indexing..."):
             ingest_pdf_bytes(uploaded.getvalue(), namespace=namespace, replace_namespace=True)
@@ -310,6 +321,11 @@ def main() -> None:
             )
 
     if ask_btn:
+        if st.session_state.queries >= MAX_QUERIES:
+            st.error("Demo limit reached. Please refresh to try again.")
+            st.stop()
+
+        st.session_state.queries += 1
         if not st.session_state.namespace:
             st.warning("Upload and process a PDF first.")
         else:
