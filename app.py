@@ -268,6 +268,8 @@ def main() -> None:
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
+    st.info("Public demo. Please avoid uploading sensitive documents.")
+
     latest_namespace = "latest"
 
     if not _check_required_env():
@@ -357,6 +359,18 @@ def main() -> None:
                             """,
                             unsafe_allow_html=True,
                         )
+
+    st.markdown(
+        """
+        <div style="margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid rgba(60, 60, 67, 0.18);">
+            <div style="color: #86868b; font-size: 0.9rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <span>ContextIQ - PDF Q&amp;A powered by Gemini + Pinecone</span>
+                <span style="white-space: nowrap;">Built with Streamlit : Diluksha</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
