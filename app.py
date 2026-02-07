@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -33,7 +34,7 @@ def _check_required_env() -> bool:
 
 
 def main() -> None:
-    st.set_page_config(page_title="ContextIQ", page_icon="📄", layout="wide")
+    st.set_page_config(page_title="ContextIQ", page_icon="", layout="wide")
 
     # --- Premium minimal styling (Apple-like) ---
     st.markdown(
@@ -232,6 +233,11 @@ def main() -> None:
             padding: 1.2rem 1.25rem;
             box-shadow: 0 14px 34px rgba(10, 132, 255, 0.08);
         }
+        .answer-card p {
+            font-size: 1.02rem;
+            line-height: 1.75;
+            margin: 0;
+        }
 
         /* Sidebar collapse/expand control (arrow) */
         [data-testid="collapsedControl"],
@@ -259,13 +265,19 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    # Header section with more whitespace
-    st.markdown("<div style='margin-bottom: 2rem;'>", unsafe_allow_html=True)
-    st.title("ContextIQ")
-    st.markdown(
-        "<p style='font-size: 1.05rem; color: #86868b; margin-top: -0.8rem;'>Sourced answers from your PDFs - fast, grounded, and private to your workspace.</p>",
-        unsafe_allow_html=True,
-    )
+    # Header section
+    st.markdown("<div style='margin-bottom: 1.5rem;'>", unsafe_allow_html=True)
+    logo_path = Path(__file__).parent / "assets" / "contextiq-logo.svg"
+    h_left, h_right = st.columns([1, 8], vertical_alignment="center")
+    with h_left:
+        if logo_path.exists():
+            st.image(str(logo_path), width=56)
+    with h_right:
+        st.title("ContextIQ")
+        st.markdown(
+            "<p style='font-size: 1.05rem; color: #86868b; margin-top: -0.8rem;'>Sourced answers from your PDFs - fast, grounded, and private to your workspace.</p>",
+            unsafe_allow_html=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.info("Public demo. Please avoid uploading sensitive documents.")
@@ -337,28 +349,31 @@ def main() -> None:
                     embeddings=embeddings,
                     query=query,
                     namespace=st.session_state.namespace,
-                    top_k=5,
+                    top_k=1,
                 )
                 answer = generate_answer(query=query, contexts=contexts)
 
             with st.container(border=True):
                 st.markdown("### Answer")
                 st.markdown("<div class='answer-card'>", unsafe_allow_html=True)
-                st.write(answer)
+                st.markdown(answer)
                 st.markdown("</div>", unsafe_allow_html=True)
 
                 if contexts:
-                    st.markdown("<br><h3 style='font-weight: 500; font-size: 1.15rem; color: #1d1d1f;'>Sources</h3>", unsafe_allow_html=True)
-                    for i, chunk in enumerate(contexts, start=1):
-                        st.markdown(
-                            f"""
-                            <div class="source-card">
-                                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #86868b; margin-bottom: 0.45rem;">Source {i}</div>
-                                {chunk}
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                    top_chunk = contexts[0]
+                    st.markdown(
+                        "<br><h3 style='font-weight: 500; font-size: 1.05rem; color: #1d1d1f;'>Top source</h3>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f"""
+                        <div class="source-card">
+                            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #86868b; margin-bottom: 0.45rem;">Source 1</div>
+                            {top_chunk}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
     st.markdown(
         """
