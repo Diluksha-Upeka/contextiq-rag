@@ -50,7 +50,3 @@ streamlit run app.py
 
 - The app keeps only the latest uploaded PDF (vectors are stored in a single Pinecone namespace and overwritten on each upload).
 - If no relevant context is found, the app will say it does not know.
-
-## Branding
-
-- The app displays a logo from assets/contextiq-logo.svg. Replace that file with your own logo to customize branding.
