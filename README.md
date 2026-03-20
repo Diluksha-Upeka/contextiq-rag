@@ -5,6 +5,21 @@ Upload a PDF, index it in Pinecone using Gemini embeddings, and ask questions wi
 
 ## Architecture Overview
 
+```mermaid
+graph TD
+    A[User] -->|Uploads PDF| B(Streamlit UI)
+    B -->|Extracts & splits text| C[LangChain Text Splitter]
+    C -->|Generates embeddings| D[Google Gemini Embeddings]
+    D -->|Stores vectors| E[(Pinecone Vector DB)]
+    
+    A -->|Asks Question| B
+    B -->|Embeds query| F[Google Gemini Embeddings]
+    F -->|Retrieves relevant chunks| E
+    E -->|Returns context chunks| G[Google Gemini LLM]
+    G -->|Generates grounded answer| B
+    B -->|Displays answer| A
+```
+
 1. Upload a PDF in the Streamlit UI
 2. Extract text and split into chunks (`RecursiveCharacterTextSplitter`)
 3. Generate embeddings with Gemini
