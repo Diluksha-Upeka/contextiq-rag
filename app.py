@@ -316,64 +316,55 @@ def main() -> None:
         st.session_state.namespace = namespace
         st.success("PDF indexed. Ask a question in the main panel.")
 
-    with st.container(border=True):
-        st.subheader("Ask")
-        st.caption("Ask a question about the PDF you just uploaded.")
-        q_col, btn_col = st.columns([6, 1])
-        with q_col:
-            query = st.text_input(
-                "Question",
-                placeholder="Ask about the PDF…",
-                label_visibility="collapsed",
-            )
-        with btn_col:
-            ask_btn = st.button(
-                "Ask",
-                type="primary",
-                disabled=not query,
-                use_container_width=True,
-            )
+    with st.container(border=False):
+        st.subheader("Interactive Knowledge Query")
+        st.caption("Chat dynamically with your uploaded document.")
 
-    if ask_btn:
-        if st.session_state.queries >= MAX_QUERIES:
-            st.error("Demo limit reached. Please refresh to try again.")
-            st.stop()
+        # Initialize chat history if not present
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-        st.session_state.queries += 1
-        if not st.session_state.namespace:
-            st.warning("Upload and process a PDF first.")
-        else:
-            with st.spinner("Searching and generating response..."):
-                embeddings = get_embedding_model()
-                contexts = retrieve_chunks(
-                    embeddings=embeddings,
-                    query=query,
-                    namespace=st.session_state.namespace,
-                    top_k=1,
-                )
-                answer = generate_answer(query=query, contexts=contexts)
+        # Display chat messages from history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-            with st.container(border=True):
-                st.markdown("### Answer")
-                st.markdown("<div class='answer-card'>", unsafe_allow_html=True)
-                st.markdown(answer)
-                st.markdown("</div>", unsafe_allow_html=True)
+        # Chat input element
+        if query := st.chat_input("Ask about your PDF…"):
+            if st.session_state.queries >= MAX_QUERIES:
+                st.error("Demo limit reached. Please refresh to try again.")
+                st.stop()
 
-                if contexts:
-                    top_chunk = contexts[0]
-                    st.markdown(
-                        "<br><h3 style='font-weight: 500; font-size: 1.05rem; color: #1d1d1f;'>Top source</h3>",
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(
-                        f"""
-                        <div class="source-card">
-                            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #86868b; margin-bottom: 0.45rem;">Source 1</div>
-                            {top_chunk}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+            # Record user message
+            st.session_state.messages.append({"role": "user", "content": query})
+            with st.chat_message("user"):
+                st.markdown(query)
+
+            st.session_state.queries += 1
+            if not st.session_state.namespace:
+                st.warning("Upload and process a PDF first.")
+            else:
+                with st.chat_message("assistant"):
+                    with st.spinner("Searching and generating response..."):
+                        embeddings = get_embedding_model()
+                        contexts = retrieve_chunks(
+                            embeddings=embeddings,
+                            query=query,
+                            namespace=st.session_state.namespace,
+                            top_k=2,
+                        )
+                        answer = generate_answer(query=query, contexts=contexts)
+                    
+                    st.markdown(answer)
+                    
+                    # Log AI response
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+
+                    if contexts:
+                        with st.expander("View Context Sources"):
+                            for i, chunk in enumerate(contexts):
+                                st.markdown(f"**Source {i+1}**")
+                                st.markdown(f"<div class='source-card'>{chunk}</div>", unsafe_allow_html=True)
 
     st.markdown(
         """
