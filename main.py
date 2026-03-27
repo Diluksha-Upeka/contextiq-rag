@@ -7,7 +7,13 @@ from dotenv import load_dotenv
 
 from services.embeddings import get_embedding_model
 from services.ingest import ingest_pdf_bytes
-from services.retrieval import generate_answer, retrieve_chunks
+from services.retrieval import (
+    detect_query_intent,
+    generate_answer,
+    normalize_source_text,
+    retrieve_chunks,
+    top_k_for_intent,
+)
 
 load_dotenv()
 
@@ -32,11 +38,13 @@ class QueryRequest(BaseModel):
     namespace: str
 
 class Source(BaseModel):
+    id: int
     text: str
 
 class QueryResponse(BaseModel):
     answer: str
     sources: List[Source]
+    intent: str
 
 @app.post("/api/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -56,16 +64,17 @@ async def upload_pdf(file: UploadFile = File(...)):
 async def query_pdf(request: QueryRequest):
     try:
         embeddings = get_embedding_model()
+        intent = detect_query_intent(request.query)
         contexts = retrieve_chunks(
             embeddings=embeddings,
             query=request.query,
             namespace=request.namespace,
-            top_k=2,
+            top_k=top_k_for_intent(intent),
         )
-        answer = generate_answer(query=request.query, contexts=contexts)
+        answer = generate_answer(query=request.query, contexts=contexts, intent=intent)
         
-        sources = [{"text": chunk} for chunk in contexts]
-        return QueryResponse(answer=answer, sources=sources)
+        sources = [{"id": i, "text": normalize_source_text(chunk)} for i, chunk in enumerate(contexts, start=1)]
+        return QueryResponse(answer=answer, sources=sources, intent=intent)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
