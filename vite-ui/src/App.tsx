@@ -3,9 +3,10 @@ import { Upload, Send, Loader2, Info, Bot, User, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+const API_DOWN_HELP = `Cannot reach API at ${API_BASE_URL}. Start backend with: python main.py`;
 
 export default function App() {
-  const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string, sources?: string[]}[]>([]);
+  const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string, sources?: {id: number, text: string}[]}[]>([]);
   const [input, setInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -43,7 +44,11 @@ export default function App() {
       setMessages([{ role: 'assistant', content: 'Document successfully indexed! What would you like to know about it?' }]);
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Failed to upload document');
+      if (error instanceof TypeError) {
+        alert(API_DOWN_HELP);
+      } else {
+        alert('Failed to upload document');
+      }
     } finally {
       setIsUploading(false);
     }
@@ -58,11 +63,31 @@ export default function App() {
     setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
     setIsTyping(true);
 
+    const explainRef = userQuery.match(/^\s*(?:explain|elaborate|expand(?:\s+on)?)\s*\[?(\d+)\]?\s*$/i);
+    const latestAssistantWithSources = [...messages].reverse().find(
+      (m) => m.role === 'assistant' && m.sources && m.sources.length > 0,
+    );
+
+    let effectiveQuery = userQuery;
+    if (explainRef) {
+      const targetId = Number(explainRef[1]);
+      const source = latestAssistantWithSources?.sources?.find((s) => s.id === targetId);
+      if (!source) {
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: `I could not find source [${targetId}] in the latest answer. Try a source number shown in the most recent Context Sources list.` },
+        ]);
+        setIsTyping(false);
+        return;
+      }
+      effectiveQuery = `Explain source [${source.id}] in simple terms and include key takeaways:\n${source.text}`;
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userQuery, namespace }),
+        body: JSON.stringify({ query: effectiveQuery, namespace }),
       });
       if (!response.ok) {
         const err = await response.text();
@@ -73,11 +98,14 @@ export default function App() {
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: data.answer,
-        sources: data.sources.map((s: any) => s.text)
+        sources: data.sources.map((s: { id: number; text: string }) => ({ id: s.id, text: s.text }))
       }]);
     } catch (error) {
       console.error('Query failed:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error processing your request.' }]);
+      const content = error instanceof TypeError
+        ? `${API_DOWN_HELP}`
+        : 'Sorry, I encountered an error processing your request.';
+      setMessages(prev => [...prev, { role: 'assistant', content }]);
     } finally {
       setIsTyping(false);
     }
@@ -191,7 +219,8 @@ export default function App() {
                           <div className='space-y-2'>
                             {m.sources.map((src, sIdx) => (
                               <div key={sIdx} className='bg-slate-50 rounded-xl p-3 text-sm text-slate-600 border border-slate-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors'>
-                                {src.substring(0, 150)}...
+                                <span className='font-semibold text-slate-700'>[{src.id}] </span>
+                                {src.text}
                               </div>
                             ))}
                           </div>
