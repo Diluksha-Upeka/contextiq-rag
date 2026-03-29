@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Send, Loader2, Info, Bot, User, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+
 export default function App() {
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string, sources?: string[]}[]>([]);
   const [input, setInput] = useState('');
@@ -28,10 +30,14 @@ export default function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/upload', {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         body: formData,
       });
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Upload failed (${response.status}): ${err}`);
+      }
       const data = await response.json();
       setNamespace(data.namespace);
       setMessages([{ role: 'assistant', content: 'Document successfully indexed! What would you like to know about it?' }]);
@@ -53,11 +59,15 @@ export default function App() {
     setIsTyping(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/query', {
+      const response = await fetch(`${API_BASE_URL}/api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: userQuery, namespace }),
       });
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Query failed (${response.status}): ${err}`);
+      }
       const data = await response.json();
       
       setMessages(prev => [...prev, { 
