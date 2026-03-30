@@ -97,8 +97,10 @@ def generate_answer(query: str, contexts: list[str]) -> str:
 
     context_block = "\n\n".join(contexts)
     prompt = (
-        "You are a PDF assistant. Answer the question using ONLY the context below. "
-        "If the answer is not in the context, say you do not know.\n\n"
+        "You are an intelligent document assistant. Answer the user's question based on the provided context. "
+        "If the context does not contain the complete answer, provide the relevant information found in the text, "
+        "and you may supplement it with your general knowledge to fully answer the question. "
+        "If the context is entirely unrelated, say you cannot find it in the document.\n\n"
         f"Context:\n{context_block}\n\n"
         f"Question: {query}\n\n"
         "Answer:"
