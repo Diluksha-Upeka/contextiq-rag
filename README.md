@@ -7,20 +7,23 @@ Upload a PDF, index it in Pinecone using Gemini embeddings, and ask questions wi
 
 ```mermaid
 graph TD
-    A[User] -->|Uploads PDF| B(Streamlit UI)
-    B -->|Extracts & splits text| C[LangChain Text Splitter]
+    A[User] -->|Uploads PDF| B(Vite React UI)
+    B -->|Calls upload API| H(FastAPI Backend)
+    H -->|Extracts & splits text| C[LangChain Text Splitter]
     C -->|Generates embeddings| D[Google Gemini Embeddings]
     D -->|Stores vectors| E[(Pinecone Vector DB)]
     
     A -->|Asks Question| B
-    B -->|Embeds query| F[Google Gemini Embeddings]
+    B -->|Calls query API| H
+    H -->|Embeds query| F[Google Gemini Embeddings]
     F -->|Retrieves relevant chunks| E
     E -->|Returns context chunks| G[Google Gemini LLM]
-    G -->|Generates grounded answer| B
+    G -->|Generates grounded answer| H
+    H -->|Returns answer + sources| B
     B -->|Displays answer| A
 ```
 
-1. Upload a PDF in the Streamlit UI
+1. Upload a PDF in the React UI
 2. Extract text and split into chunks (`RecursiveCharacterTextSplitter`)
 3. Generate embeddings with Gemini
 4. Store vectors in Pinecone
@@ -29,7 +32,8 @@ graph TD
 
 ## Tech Stack
 
-- Streamlit (UI)
+- React + Vite (UI)
+- FastAPI (API backend)
 - Google Gemini (LLM + embeddings)
 - Pinecone (vector database)
 - LangChain (chunking)
@@ -55,10 +59,18 @@ cp .env.example .env
 - `PINECONE_API_KEY`
 - `PINECONE_INDEX_NAME`
 
-4. Run the app:
+4. Run the backend API:
 
 ```bash
-streamlit run app.py
+python main.py
+```
+
+5. Run the latest UI (Vite React app):
+
+```bash
+cd vite-ui
+npm install
+npm run dev
 ```
 
 ## Notes
