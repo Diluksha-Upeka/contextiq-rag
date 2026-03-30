@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pinecone import Pinecone, ServerlessSpec
 
 from services.embeddings import embed_texts, get_embedding_dimension, get_embedding_model
