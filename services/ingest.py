@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -6,6 +7,33 @@ from pinecone import Pinecone, ServerlessSpec
 
 from services.embeddings import embed_texts, get_embedding_dimension, get_embedding_model
 from utils.pdf_loader import load_pdf_text
+
+
+def _is_reference_like(text: str) -> bool:
+    """Heuristically identify bibliography/reference-heavy chunks."""
+    sample = " ".join(text.split())
+    lower = sample.lower()
+    if not sample:
+        return False
+
+    signals = 0
+    if "references" in lower or "bibliography" in lower:
+        signals += 2
+    if re.search(r"\barxiv\b|doi|proceedings|conference", lower):
+        signals += 1
+    if re.search(r"\[[0-9]{1,3}\]", sample):
+        signals += 1
+
+    years = re.findall(r"\b(19|20)\d{2}\b", sample)
+    if len(years) >= 3:
+        signals += 1
+
+    # Many short "Last, F." style names are common in references.
+    initials = re.findall(r"\b[A-Z][a-z]+,\s+[A-Z]\.\b", sample)
+    if len(initials) >= 2:
+        signals += 1
+
+    return signals >= 3
 
 
 def _get_pinecone_index(expected_dimension: int):
@@ -102,7 +130,10 @@ def ingest_pdf_bytes(pdf_bytes: bytes, namespace: str, replace_namespace: bool =
             (
                 f"{namespace}-{uuid.uuid4().hex}-{i}",
                 vector,
-                {"text": chunk},
+                {
+                    "text": chunk,
+                    "is_reference": _is_reference_like(chunk),
+                },
             )
         )
     index.upsert(vectors=payload, namespace=namespace)
