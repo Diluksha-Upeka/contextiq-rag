@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import os
+import re
 from dotenv import load_dotenv
 
 from services.embeddings import get_embedding_model
@@ -54,7 +55,8 @@ class QueryResponse(BaseModel):
 
 @app.post("/api/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    if not file.filename.endswith(".pdf"):
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
     try:
@@ -64,7 +66,24 @@ async def upload_pdf(file: UploadFile = File(...)):
         ingest_pdf_bytes(content, namespace=namespace, replace_namespace=True)
         return {"message": "Successfully indexed PDF", "namespace": namespace}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        msg = str(e)
+        lower = msg.lower()
+        if "429" in msg or "quota" in lower or "rate" in lower:
+            retry_after = None
+            retry_in_match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", lower)
+            retry_delay_match = re.search(r"retry_delay\s*\{[^}]*seconds:\s*([0-9]+)", lower, flags=re.DOTALL)
+            if retry_in_match:
+                retry_after = int(float(retry_in_match.group(1))) + 1
+            elif retry_delay_match:
+                retry_after = int(retry_delay_match.group(1)) + 1
+
+            detail = "Embedding provider rate limit/quota exceeded."
+            if retry_after is not None:
+                detail += f" Retry after about {retry_after}s."
+            detail += " If this persists, use a new API key with available quota or upgrade billing."
+            raise HTTPException(status_code=429, detail=detail)
+
+        raise HTTPException(status_code=500, detail=msg)
 
 @app.post("/api/query", response_model=QueryResponse)
 async def query_pdf(request: QueryRequest):

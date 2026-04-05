@@ -51,7 +51,27 @@ def _get_pinecone_index(expected_dimension: int):
     dimension = int(expected_dimension)
 
     pc = Pinecone(api_key=api_key)
-    existing = {idx["name"] for idx in pc.list_indexes()}
+
+    # Pinecone SDK list response shape varies by version; normalize to a set of names.
+    list_response = pc.list_indexes()
+    existing: set[str] = set()
+    if hasattr(list_response, "names") and callable(getattr(list_response, "names")):
+        existing = set(list_response.names())
+    elif isinstance(list_response, dict):
+        indexes = list_response.get("indexes", [])
+        for idx in indexes:
+            if isinstance(idx, dict) and idx.get("name"):
+                existing.add(str(idx["name"]))
+    else:
+        try:
+            for idx in list_response:
+                if isinstance(idx, dict) and idx.get("name"):
+                    existing.add(str(idx["name"]))
+                elif hasattr(idx, "name"):
+                    existing.add(str(getattr(idx, "name")))
+        except TypeError:
+            # Non-iterable response; keep empty and continue.
+            pass
 
     def _describe_dim(name: str) -> int | None:
         try:
