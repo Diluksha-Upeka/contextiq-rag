@@ -1,17 +1,61 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Scissors, Brain, Database, Sparkles, CheckCircle2, Clock3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 const API_DOWN_HELP = `Cannot reach API at ${API_BASE_URL}. Start backend with: python main.py`;
 
+const INDEXING_STAGES = [
+  { title: 'Uploading PDF', detail: 'Transferring your file securely', seconds: 2.5, icon: FileText },
+  { title: 'Extracting Text', detail: 'Reading pages and collecting document text', seconds: 4.5, icon: Sparkles },
+  { title: 'Chunking Content', detail: 'Splitting content into retrieval-ready chunks', seconds: 6.0, icon: Scissors },
+  { title: 'Generating Embeddings', detail: 'Turning chunks into semantic vectors', seconds: 9.0, icon: Brain },
+  { title: 'Indexing in Pinecone', detail: 'Storing vectors for fast question answering', seconds: 9.0, icon: Database },
+] as const;
+
+function getIndexingProgressState(elapsedMs: number) {
+  const totalMs = INDEXING_STAGES.reduce((sum, s) => sum + s.seconds * 1000, 0);
+  const clampedElapsed = Math.max(0, elapsedMs);
+  let cursor = 0;
+  let stageIndex = INDEXING_STAGES.length - 1;
+
+  for (let i = 0; i < INDEXING_STAGES.length; i += 1) {
+    const stageMs = INDEXING_STAGES[i].seconds * 1000;
+    const nextCursor = cursor + stageMs;
+    if (clampedElapsed < nextCursor) {
+      stageIndex = i;
+      break;
+    }
+    cursor = nextCursor;
+  }
+
+  const stageMs = INDEXING_STAGES[stageIndex].seconds * 1000;
+  const stageElapsed = Math.max(0, clampedElapsed - cursor);
+  const stageRatio = Math.min(1, stageElapsed / stageMs);
+
+  const stageStartProgress = (stageIndex / INDEXING_STAGES.length) * 100;
+  const stageEndProgress = ((stageIndex + 1) / INDEXING_STAGES.length) * 100;
+  const easedProgress = stageStartProgress + (stageEndProgress - stageStartProgress) * stageRatio;
+
+  const progress = Math.min(97, Math.max(4, (clampedElapsed / totalMs) * 15 + easedProgress * 0.85));
+  return {
+    stageIndex,
+    progress,
+    elapsedSeconds: Math.floor(clampedElapsed / 1000),
+  };
+}
+
 export default function App() {
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string, sources?: {id: number, text: string}[]}[]>([]);
   const [input, setInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadCompleting, setIsUploadCompleting] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [namespace, setNamespace] = useState<string | null>(null);
   const [expandedSources, setExpandedSources] = useState<Record<number, boolean>>({});
+  const [indexingElapsedMs, setIndexingElapsedMs] = useState(0);
+  const [completionProgress, setCompletionProgress] = useState(100);
+  const completionStartRef = useRef(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -88,13 +132,71 @@ export default function App() {
     scrollToBottom();
   }, [messages, isTyping]);
 
+  useEffect(() => {
+    if (!isUploading && !isUploadCompleting) {
+      setIndexingElapsedMs(0);
+      return;
+    }
+
+    if (!isUploading) return;
+
+    const startedAt = Date.now();
+    const tick = () => setIndexingElapsedMs(Date.now() - startedAt);
+    tick();
+    const interval = window.setInterval(tick, 180);
+    return () => window.clearInterval(interval);
+  }, [isUploading, isUploadCompleting]);
+
+  useEffect(() => {
+    if (!isUploadCompleting) return;
+
+    const from = completionStartRef.current;
+    const durationMs = 900;
+    let raf = 0;
+    const startedAt = performance.now();
+
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / durationMs);
+      const eased = 1 - (1 - t) ** 3;
+      setCompletionProgress(from + (100 - from) * eased);
+      if (t < 1) {
+        raf = window.requestAnimationFrame(step);
+      } else {
+        window.setTimeout(() => {
+          setIsUploadCompleting(false);
+          setCompletionProgress(100);
+        }, 240);
+      }
+    };
+
+    raf = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(raf);
+  }, [isUploadCompleting]);
+
+  const indexingState = getIndexingProgressState(indexingElapsedMs);
+  const overlayVisible = isUploading || isUploadCompleting;
+  const displayProgress = isUploadCompleting ? completionProgress : indexingState.progress;
+  const displayElapsedSeconds = Math.floor(indexingElapsedMs / 1000);
+  const currentStage = isUploadCompleting
+    ? {
+        title: 'Finalizing Workspace',
+        detail: 'Wrapping up indexing and preparing your chat session',
+      }
+    : INDEXING_STAGES[indexingState.stageIndex];
+  const ringRadius = 56;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringOffset = ringCircumference * (1 - displayProgress / 100);
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
+    setIsUploadCompleting(false);
+    setCompletionProgress(100);
     const formData = new FormData();
     formData.append('file', file);
+    let uploadSucceeded = false;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/upload`, {
@@ -106,6 +208,7 @@ export default function App() {
         throw new Error(`Upload failed (${response.status}): ${err}`);
       }
       const data = await response.json();
+      uploadSucceeded = true;
       setNamespace(data.namespace);
       setMessages([{ role: 'assistant', content: 'Document successfully indexed! What would you like to know about it?' }]);
     } catch (error) {
@@ -116,6 +219,12 @@ export default function App() {
         alert('Failed to upload document');
       }
     } finally {
+      if (uploadSucceeded) {
+        const startAt = Math.max(88, getIndexingProgressState(indexingElapsedMs).progress);
+        completionStartRef.current = startAt;
+        setCompletionProgress(startAt);
+        setIsUploadCompleting(true);
+      }
       setIsUploading(false);
     }
   };
@@ -178,7 +287,7 @@ export default function App() {
   };
 
   return (
-    <div className='flex h-screen bg-[#f9fafb] text-slate-800 font-sans selection:bg-blue-200 selection:text-blue-900'>
+    <div className='flex h-screen bg-[#f9fafb] text-slate-800 font-sans selection:bg-blue-200 selection:text-blue-900 relative'>
       
       {/* Sidebar - Apple Inspired */}
       <aside className='w-80 bg-white/80 backdrop-blur-xl border-r border-slate-200/60 p-6 flex flex-col items-center justify-between shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] z-10'>
@@ -205,10 +314,10 @@ export default function App() {
             
             <button 
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
+              disabled={overlayVisible}
               className='w-full py-3 px-4 bg-white border shadow-sm border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200 transition-all duration-200 flex items-center justify-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]'
             >
-              {isUploading ? (
+              {overlayVisible ? (
                 <Loader2 className='w-5 h-5 animate-spin text-blue-600' />
               ) : (
                 <>
@@ -348,13 +457,13 @@ export default function App() {
                 type='text'
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                disabled={!namespace || isTyping}
+                disabled={!namespace || isTyping || overlayVisible}
                 placeholder={namespace ? 'Ask a question about the document...' : 'Upload a PDF to start asking...'}
                 className='w-full pl-6 pr-14 py-4 bg-white border border-slate-200 text-slate-800 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all disabled:opacity-60 relative z-10 text-base placeholder:text-slate-400'
               />
               <button
                 type='submit'
-                disabled={!input.trim() || !namespace || isTyping}
+                disabled={!input.trim() || !namespace || isTyping || overlayVisible}
                 className='absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all z-20 shadow-md shadow-blue-600/20 active:scale-95'
               >
                 <Send className='w-4 h-4' />
@@ -366,6 +475,95 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      <AnimatePresence>
+        {overlayVisible && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className='absolute inset-0 z-50 bg-slate-900/45 backdrop-blur-md flex items-center justify-center p-5'
+          >
+            <motion.div
+              initial={{ y: 12, opacity: 0.9, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 8, opacity: 0.96, scale: 0.99 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+              className='w-full max-w-3xl rounded-3xl bg-white/95 border border-white/80 shadow-[0_30px_120px_-24px_rgba(15,23,42,0.5)] overflow-hidden'
+            >
+              <div className='relative p-8 md:p-10'>
+                <div className='absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.14),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.12),transparent_50%)]' />
+
+                <div className='relative flex flex-col md:flex-row items-start md:items-center gap-8'>
+                  <div className='relative shrink-0'>
+                    <svg className='w-32 h-32 -rotate-90' viewBox='0 0 140 140' aria-hidden='true'>
+                      <circle cx='70' cy='70' r={ringRadius} stroke='rgb(226 232 240)' strokeWidth='10' fill='none' />
+                      <motion.circle
+                        cx='70'
+                        cy='70'
+                        r={ringRadius}
+                        stroke='url(#indexingGradient)'
+                        strokeWidth='10'
+                        strokeLinecap='round'
+                        fill='none'
+                        strokeDasharray={ringCircumference}
+                        animate={{ strokeDashoffset: ringOffset }}
+                        transition={{ duration: 0.4, ease: 'easeOut' }}
+                      />
+                      <defs>
+                        <linearGradient id='indexingGradient' x1='0%' y1='0%' x2='100%' y2='100%'>
+                          <stop offset='0%' stopColor='#2563eb' />
+                          <stop offset='100%' stopColor='#06b6d4' />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                    <div className='absolute inset-0 flex flex-col items-center justify-center'>
+                      <span className='text-2xl font-bold text-slate-800'>{Math.round(displayProgress)}%</span>
+                      <span className='text-[11px] font-semibold tracking-wide text-slate-500 uppercase'>Processing</span>
+                    </div>
+                  </div>
+
+                  <div className='flex-1 w-full'>
+                    <div className='flex items-center gap-2 mb-2 text-xs font-semibold text-blue-700 uppercase tracking-[0.12em]'>
+                      <Clock3 className='w-3.5 h-3.5' />
+                      {isUploadCompleting ? 'Completing Setup' : 'Indexing In Progress'}
+                    </div>
+                    <h3 className='text-2xl font-bold text-slate-900 mb-1'>{currentStage.title}</h3>
+                    <p className='text-slate-600 leading-relaxed mb-6'>{currentStage.detail}</p>
+
+                    <div className='space-y-2'>
+                      {INDEXING_STAGES.map((stage, idx) => {
+                        const Icon = stage.icon;
+                        const done = isUploadCompleting || idx < indexingState.stageIndex;
+                        const active = isUploadCompleting ? idx === INDEXING_STAGES.length - 1 : idx === indexingState.stageIndex;
+                        return (
+                          <div key={stage.title} className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ${active ? 'bg-blue-50 border border-blue-100' : 'border border-transparent'}`}>
+                            <div className='w-5 h-5 flex items-center justify-center'>
+                              {done ? (
+                                <CheckCircle2 className='w-5 h-5 text-emerald-500' />
+                              ) : (
+                                <Icon className={`w-4 h-4 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
+                              )}
+                            </div>
+                            <span className={`text-sm ${active ? 'text-slate-800 font-semibold' : done ? 'text-slate-600' : 'text-slate-400'}`}>
+                              {stage.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className='mt-6 flex flex-wrap items-center gap-3 text-xs'>
+                      <span className='inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-slate-600 font-medium'>Elapsed: {displayElapsedSeconds}s</span>
+                      <span className='inline-flex items-center rounded-full bg-blue-50 px-3 py-1.5 text-blue-700 font-medium'>Please keep this tab open</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
