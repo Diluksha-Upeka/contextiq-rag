@@ -63,9 +63,15 @@ export default function App() {
   const [indexingElapsedMs, setIndexingElapsedMs] = useState(0);
   const [completionProgress, setCompletionProgress] = useState(100);
   const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
+  const [showSplash, setShowSplash] = useState(true);
   const completionStartRef = useRef(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 2600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleSources = (messageIndex: number) => {
     setExpandedSources(prev => ({ ...prev, [messageIndex]: !prev[messageIndex] }));
@@ -309,8 +315,76 @@ export default function App() {
   };
 
   return (
-    <div className='flex h-screen bg-[#f9fafb] text-slate-800 font-sans selection:bg-blue-200 selection:text-blue-900 relative'>
-      
+    <>
+      <AnimatePresence>
+        {showSplash && (
+          <motion.div
+            key="splash-screen"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, y: -40, filter: 'blur(10px)' }}
+            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            className='fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center overflow-hidden'
+          >
+            <div className='absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.15),transparent_50%)] pointer-events-none' />
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, rotate: -10 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className='w-24 h-24 bg-gradient-to-tr from-blue-600 to-blue-500 rounded-[2rem] flex items-center justify-center shadow-[0_0_80px_rgba(37,99,235,0.4)] mb-8 relative'
+            >
+              <BookOpen className='w-12 h-12 text-white' />
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+                className='absolute inset-0 rounded-[2rem] border border-white/20 border-t-white/60'
+              />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
+              >
+                <Sparkles className='absolute -top-4 -right-4 w-10 h-10 text-blue-300' />
+              </motion.div>
+            </motion.div>
+            
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.7, delay: 0.2, ease: "easeOut" }}
+              className='text-center relative z-10'
+            >
+              <h1 className='text-5xl font-extrabold text-white tracking-tight mb-4'>
+                Context<span className='text-blue-400'>IQ</span>
+              </h1>
+              <div className='flex items-center gap-3 justify-center text-blue-200/80 font-medium tracking-wide text-sm uppercase'>
+                <Brain className='w-4 h-4' />
+                <span>Intelligent Document Analysis</span>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 240 }}
+              transition={{ duration: 1.0, delay: 0.6, ease: "easeInOut" }}
+              className='h-1.5 bg-slate-800 mt-12 rounded-full overflow-hidden relative shadow-inner'
+            >
+              <motion.div 
+                initial={{ x: "-100%" }}
+                animate={{ x: "100%" }}
+                transition={{ duration: 1.5, delay: 0.8, ease: "easeInOut" }}
+                className='absolute inset-y-0 left-0 w-2/3 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full'
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.div 
+        animate={showSplash ? { opacity: 0, scale: 0.96, filter: 'blur(10px)' } : { opacity: 1, scale: 1, filter: 'blur(0px)' }}
+        transition={{ duration: 1.0, ease: [0.22, 1, 0.36, 1] }}
+        className='flex h-screen w-full bg-[#f9fafb] text-slate-800 font-sans selection:bg-blue-200 selection:text-blue-900 relative origin-bottom'
+      >
+        
       {/* Sidebar - Apple Inspired */}
       <aside className='w-80 bg-white/80 backdrop-blur-xl border-r border-slate-200/60 p-6 flex flex-col items-center justify-between shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] z-10'>
         <div className='w-full'>
@@ -638,6 +712,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-    </div>
+      </motion.div>
+    </>
   );
 }
