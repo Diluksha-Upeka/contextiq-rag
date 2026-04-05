@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Scissors, Brain, Database, Sparkles, CheckCircle2, Clock3, Copy, Check, MessageSquare } from 'lucide-react';
+import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Scissors, Brain, Database, Sparkles, CheckCircle2, Clock3, Copy, Check, MessageSquare, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
@@ -422,6 +422,26 @@ export default function App() {
                 </>
               )}
             </button>
+            
+            <AnimatePresence>
+              {!showSplash && !namespace && !isUploading && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ delay: 0.8, duration: 0.4 }}
+                  className='overflow-hidden pt-3 flex justify-center'
+                >
+                  <motion.div
+                    animate={{ y: [0, -4, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    className='bg-blue-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-full shadow-[0_4px_14px_rgba(37,99,235,0.4)] flex items-center gap-1.5'
+                  >
+                    <ArrowUp className='w-3.5 h-3.5' /> Upload your PDF here
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             
             {namespace && (
               <div className='mt-4 flex items-center gap-2 text-xs font-medium text-emerald-600 bg-emerald-50 py-1.5 px-3 rounded-lg border border-emerald-100'>
