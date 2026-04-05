@@ -206,11 +206,66 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     if not api_key:
         raise ValueError("GOOGLE_API_KEY is not set")
 
+    max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
+
     return ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
         temperature=0,
-        max_output_tokens=1024,
+        max_output_tokens=max_output_tokens,
     )
+
+
+def _extract_finish_reason(response) -> str:
+    """Best-effort extraction of provider finish reason for truncation checks."""
+    meta = getattr(response, "response_metadata", None)
+    if isinstance(meta, dict):
+        reason = meta.get("finish_reason") or meta.get("finishReason")
+        if isinstance(reason, str):
+            return reason.upper()
+    return ""
+
+
+def _as_text(content) -> str:
+    """Normalize provider content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(p for p in parts if p)
+    return str(content)
+
+
+def _looks_incomplete(text: str, finish_reason: str = "") -> bool:
+    """Heuristically detect truncated model output."""
+    if not text:
+        return False
+
+    normalized = text.rstrip()
+    if not normalized:
+        return False
+
+    if finish_reason in {"MAX_TOKENS", "LENGTH"}:
+        return True
+
+    if len(normalized) < 200:
+        return False
+
+    if normalized.endswith((".", "!", "?", '"', "'")):
+        return False
+    if re.search(r"\[[0-9]+\]\s*$", normalized):
+        return False
+
+    if normalized.endswith((":", ",", "-", "(", "/")):
+        return True
+
+    return True
 
 
 def generate_answer(query: str, contexts: list[str], intent: Intent = "qa") -> str:
@@ -224,8 +279,8 @@ def generate_answer(query: str, contexts: list[str], intent: Intent = "qa") -> s
 
     if intent == "summary":
         task_instructions = (
-            "The user requested a summary. Provide a concise summary with 4-6 bullet points, "
-            "then a 1-2 sentence takeaway. Include citation markers like [1], [2] at the end of each bullet "
+            "The user requested a summary. Prefer 5 concise bullet points (4-6 if needed), "
+            "keep each bullet short, then add a 1-sentence takeaway. Include citation markers like [1], [2] at the end of each bullet "
             "using ONLY the provided context IDs."
         )
     else:
@@ -243,4 +298,22 @@ def generate_answer(query: str, contexts: list[str], intent: Intent = "qa") -> s
         "Answer:"
     )
     response = llm.invoke(prompt)
-    return response.content
+    answer = _as_text(response.content).strip()
+    finish_reason = _extract_finish_reason(response)
+
+    # One continuation pass avoids mid-sentence cutoffs when the model stops on length.
+    if _looks_incomplete(answer, finish_reason=finish_reason):
+        continuation_prompt = (
+            "You were generating an answer from the same context and stopped early. "
+            "Continue from exactly where the partial answer ended. Do not repeat prior text. "
+            "Keep the same style and citation format, and finish the answer cleanly.\n\n"
+            f"Context Chunks:\n{context_block}\n\n"
+            f"Question: {query}\n\n"
+            f"Partial answer:\n{answer}\n\n"
+            "Continuation only:"
+        )
+        continuation = _as_text(llm.invoke(continuation_prompt).content).strip()
+        if continuation:
+            answer = f"{answer}\n{continuation}".strip()
+
+    return answer
