@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Send, Loader2, Info, Bot, User, BookOpen } from 'lucide-react';
+import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
@@ -11,8 +11,74 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [namespace, setNamespace] = useState<string | null>(null);
+  const [expandedSources, setExpandedSources] = useState<Record<number, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const toggleSources = (messageIndex: number) => {
+    setExpandedSources(prev => ({ ...prev, [messageIndex]: !prev[messageIndex] }));
+  };
+
+  const stripInlineContextSources = (content: string) => {
+    const marker = /\n\s*context sources\s*$/im;
+    const match = marker.exec(content);
+    if (!match || match.index <= 0) return content;
+    return content.slice(0, match.index).trim();
+  };
+
+  const renderInlineMarkdown = (text: string) => {
+    const chunks = text.split(/(\*\*[^*]+\*\*)/g);
+    return chunks.map((chunk, idx) => {
+      const boldMatch = chunk.match(/^\*\*([^*]+)\*\*$/);
+      if (boldMatch) {
+        return <strong key={idx} className='font-semibold text-slate-900'>{boldMatch[1]}</strong>;
+      }
+      return <React.Fragment key={idx}>{chunk}</React.Fragment>;
+    });
+  };
+
+  const renderAssistantContent = (rawContent: string, hasStructuredSources: boolean) => {
+    const content = hasStructuredSources ? stripInlineContextSources(rawContent) : rawContent;
+    const lines = content.split('\n').map((line) => line.trimEnd());
+    const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+    const bulletLikeCount = nonEmptyLines.filter((line) => /^[-*•]\s+/.test(line.trim())).length;
+    const isMostlyBullets = nonEmptyLines.length > 0 && bulletLikeCount >= Math.ceil(nonEmptyLines.length * 0.4);
+
+    if (isMostlyBullets) {
+      return (
+        <div className='space-y-3'>
+          {lines.map((line, idx) => {
+            const trimmed = line.trim();
+            if (!trimmed) {
+              return <div key={idx} className='h-1' />;
+            }
+
+            if (/^[-*•]\s+/.test(trimmed)) {
+              const text = trimmed.replace(/^[-*•]\s+/, '');
+              return (
+                <div key={idx} className='flex items-start gap-2'>
+                  <span className='mt-2 h-1.5 w-1.5 rounded-full bg-blue-500 flex-shrink-0' />
+                  <p className='leading-relaxed'>{renderInlineMarkdown(text)}</p>
+                </div>
+              );
+            }
+
+            return <p key={idx} className='leading-relaxed whitespace-pre-wrap'>{renderInlineMarkdown(line)}</p>;
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <div className='space-y-3'>
+        {lines.map((line, idx) => (
+          line.trim()
+            ? <p key={idx} className='leading-relaxed whitespace-pre-wrap'>{renderInlineMarkdown(line)}</p>
+            : <div key={idx} className='h-1' />
+        ))}
+      </div>
+    );
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -211,18 +277,33 @@ export default function App() {
                         ? 'bg-blue-600 text-white rounded-br-sm'
                         : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
                     }`}>
-                      <p className='leading-relaxed whitespace-pre-wrap'>{m.content}</p>
+                      {m.role === 'assistant'
+                        ? renderAssistantContent(m.content, Boolean(m.sources?.length))
+                        : <p className='leading-relaxed whitespace-pre-wrap'>{m.content}</p>}
                       
                       {m.sources && m.sources.length > 0 && (
                         <div className='mt-4 pt-4 border-t border-slate-100'>
-                          <p className='text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3'>Context Sources</p>
-                          <div className='space-y-2'>
-                            {m.sources.map((src, sIdx) => (
-                              <div key={sIdx} className='bg-slate-50 rounded-xl p-3 text-sm text-slate-600 border border-slate-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors'>
-                                <span className='font-semibold text-slate-700'>[{src.id}] </span>
-                                {src.text}
+                          <button
+                            type='button'
+                            onClick={() => toggleSources(idx)}
+                            className='w-full flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-1 hover:text-blue-600 transition-colors'
+                          >
+                            <span>Context Sources ({m.sources.length})</span>
+                            {expandedSources[idx] ? <ChevronUp className='w-4 h-4' /> : <ChevronDown className='w-4 h-4' />}
+                          </button>
+                          <div
+                            className={`grid transition-all duration-300 ease-out ${expandedSources[idx] ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+                          >
+                            <div className='overflow-hidden'>
+                              <div className='space-y-2'>
+                                {m.sources.map((src, sIdx) => (
+                                  <div key={sIdx} className='bg-slate-50 rounded-xl p-3 text-sm text-slate-600 border border-slate-100 hover:border-blue-100 hover:bg-blue-50/30 transition-colors'>
+                                    <span className='font-semibold text-slate-700'>[{src.id}] </span>
+                                    {src.text}
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            </div>
                           </div>
                         </div>
                       )}
