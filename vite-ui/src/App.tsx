@@ -1,9 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Scissors, Brain, Database, Sparkles, CheckCircle2, Clock3 } from 'lucide-react';
+import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Scissors, Brain, Database, Sparkles, CheckCircle2, Clock3, Copy, Check, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 const API_DOWN_HELP = `Cannot reach API at ${API_BASE_URL}. Start backend with: python main.py`;
+
+const SUGGESTED_PROMPTS = [
+  "Summarize this in 5 bullet points",
+  "What are the key takeaways?",
+  "Explain the core methodology",
+  "What are the main challenges mentioned?"
+];
 
 const INDEXING_STAGES = [
   { title: 'Uploading PDF', detail: 'Transferring your file securely', seconds: 2.5, icon: FileText },
@@ -55,6 +62,7 @@ export default function App() {
   const [expandedSources, setExpandedSources] = useState<Record<number, boolean>>({});
   const [indexingElapsedMs, setIndexingElapsedMs] = useState(0);
   const [completionProgress, setCompletionProgress] = useState(100);
+  const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
   const completionStartRef = useRef(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -229,11 +237,19 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !namespace) return;
+  const handleCopy = (text: string, idx: number) => {
+    const rawText = stripInlineContextSources(text);
+    navigator.clipboard.writeText(rawText);
+    setCopiedMsgIdx(idx);
+    setTimeout(() => setCopiedMsgIdx(null), 2000);
+  };
 
-    const userQuery = input.trim();
+  const handleChipClick = (query: string) => {
+    setInput(query);
+    submitUserQuery(query);
+  };
+
+  const submitUserQuery = async (userQuery: string) => {
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
     setIsTyping(true);
@@ -284,6 +300,12 @@ export default function App() {
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() || !namespace || isTyping || overlayVisible) return;
+    submitUserQuery(input.trim());
   };
 
   return (
@@ -381,15 +403,40 @@ export default function App() {
                       </div>
                     )}
                     
-                    <div className={`max-w-[85%] rounded-3xl px-6 py-4 shadow-sm ${
+                    <div className={`max-w-[85%] rounded-3xl px-6 py-4 shadow-sm relative group ${
                       m.role === 'user'
                         ? 'bg-blue-600 text-white rounded-br-sm'
                         : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
                     }`}>
+                      {m.role === 'assistant' && (
+                        <button
+                          onClick={() => handleCopy(m.content, idx)}
+                          className='absolute top-3 right-3 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg opacity-0 group-hover:opacity-100 transition-all focus:opacity-100 focus:outline-none'
+                          title='Copy response'
+                        >
+                          {copiedMsgIdx === idx ? <Check className='w-4 h-4 text-emerald-500' /> : <Copy className='w-4 h-4' />}
+                        </button>
+                      )}
+
                       {m.role === 'assistant'
                         ? renderAssistantContent(m.content, Boolean(m.sources?.length))
                         : <p className='leading-relaxed whitespace-pre-wrap'>{m.content}</p>}
                       
+                      {m.role === 'assistant' && idx === 0 && namespace && messages.length === 1 && (
+                        <div className='mt-8 mb-2 flex flex-wrap gap-2'>
+                          {SUGGESTED_PROMPTS.map((prompt, pIdx) => (
+                            <button
+                              key={pIdx}
+                              onClick={() => handleChipClick(prompt)}
+                              className='text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 px-3 py-2 rounded-full transition-colors flex items-center gap-1.5'
+                            >
+                              <MessageSquare className='w-3 h-3' />
+                              {prompt}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       {m.sources && m.sources.length > 0 && (
                         <div className='mt-4 pt-4 border-t border-slate-100'>
                           <button
@@ -451,20 +498,31 @@ export default function App() {
         {/* Input Area */}
         <div className='p-6 bg-transparent'>
           <div className='max-w-3xl mx-auto'>
-            <form onSubmit={handleSendMessage} className='relative group'>
+            <form onSubmit={handleSendMessage} className='relative group flex items-end'>
               <div className='absolute inset-0 bg-blue-400/5 rounded-2xl blur-xl transition-all duration-300 group-hover:bg-blue-400/10 pointer-events-none' />
-              <input
-                type='text'
+              <textarea
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                rows={1}
                 disabled={!namespace || isTyping || overlayVisible}
-                placeholder={namespace ? 'Ask a question about the document...' : 'Upload a PDF to start asking...'}
-                className='w-full pl-6 pr-14 py-4 bg-white border border-slate-200 text-slate-800 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all disabled:opacity-60 relative z-10 text-base placeholder:text-slate-400'
+                placeholder={namespace ? 'Ask a question about the document... (Shift+Enter for new line)' : 'Upload a PDF to start asking...'}
+                className='w-full pl-6 pr-14 py-4 bg-white border border-slate-200 text-slate-800 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all disabled:opacity-60 relative z-10 text-base placeholder:text-slate-400 resize-none overflow-y-auto'
+                style={{ minHeight: '56px', maxHeight: '180px', lineHeight: '1.5' }}
               />
               <button
                 type='submit'
                 disabled={!input.trim() || !namespace || isTyping || overlayVisible}
-                className='absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all z-20 shadow-md shadow-blue-600/20 active:scale-95'
+                className='absolute right-2.5 bottom-2.5 p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all z-20 shadow-md shadow-blue-600/20 active:scale-95 flex-shrink-0'
               >
                 <Send className='w-4 h-4' />
               </button>
