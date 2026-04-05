@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Scissors, Brain, Database, Sparkles, CheckCircle2, Clock3, Copy, Check, MessageSquare, ArrowUp } from 'lucide-react';
+import { Upload, Send, Loader2, Info, Bot, User, BookOpen, ChevronDown, ChevronUp, FileText, Brain, Sparkles, CheckCircle2, Clock3, Copy, Check, MessageSquare, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
@@ -12,12 +12,59 @@ const SUGGESTED_PROMPTS = [
   "What are the main challenges mentioned?"
 ];
 
+const FastApiIcon = (props: any) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor" fillOpacity="0.2"/>
+  </svg>
+);
+
+const PyPDFIcon = (props: any) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
+);
+
+const LangChainIcon = (props: any) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+  </svg>
+);
+
+const GeminiIcon = (props: any) => (
+  <svg viewBox="0 0 24 24" fill="none" {...props}>
+    <defs>
+      <linearGradient id="gemini-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#4A90E2" />
+        <stop offset="33%" stopColor="#A051D9" />
+        <stop offset="66%" stopColor="#F55170" />
+        <stop offset="100%" stopColor="#FF8A5B" />
+      </linearGradient>
+    </defs>
+    <path fill="url(#gemini-gradient)" d="M21.6 10.4c-3.1-.7-5.5-3.1-6.2-6.2-.2-1-.2-1-.4-1s-.2 0-.4 1c-.7 3.1-3.1 5.5-6.2 6.2-1 .2-1 .2-1 .4s0 .2 1 .4c3.1.7 5.5 3.1 6.2 6.2.2 1 .2 1 .4 1s.2 0 .4-1c.7-3.1 3.1-5.5 6.2-6.2 1-.2 1-.2 1-.4s0-.2-1-.4z" />
+    <path fill="url(#gemini-gradient)" d="M7.4 16.6c-1.3-.3-2.3-1.3-2.6-2.6-.1-.4-.1-.4-.2-.4s-.1 0-.2.4c-.3 1.3-1.3 2.3-2.6 2.6-.4.1-.4.1-.4.2s0 .1.4.2c1.3.3 2.3 1.3 2.6 2.6.1.4.1.4.2.4s.1 0 .2-.4c.3-1.3 1.3-2.3 2.6-2.6.4-.1.4-.1.4-.2s0-.1-.4-.2z" />
+  </svg>
+);
+
+const PineconeIcon = (props: any) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M12 2L4 10l8 12 8-12z" opacity="0.8"/>
+    <path d="M12 4.5v14l-5-7.5L12 4.5z" opacity="0.5"/>
+    <path d="M12 4.5v14l5-7.5L12 4.5z" opacity="0.9"/>
+  </svg>
+);
+
 const INDEXING_STAGES = [
-  { title: 'Uploading PDF', detail: 'Transferring your file securely', seconds: 2.5, icon: FileText },
-  { title: 'Extracting Text', detail: 'Reading pages and collecting document text', seconds: 4.5, icon: Sparkles },
-  { title: 'Chunking Content', detail: 'Splitting content into retrieval-ready chunks', seconds: 6.0, icon: Scissors },
-  { title: 'Generating Embeddings', detail: 'Turning chunks into semantic vectors', seconds: 9.0, icon: Brain },
-  { title: 'Indexing in Pinecone', detail: 'Storing vectors for fast question answering', seconds: 9.0, icon: Database },
+  { title: 'Uploading PDF', detail: 'Transferring to FastAPI Server', seconds: 2.5, icon: FastApiIcon },
+  { title: 'Extracting Text', detail: 'Parsing pages via PyPDF', seconds: 4.5, icon: PyPDFIcon },
+  { title: 'Chunking Content', detail: 'Splitting via LangChain logic', seconds: 6.0, icon: LangChainIcon },
+  { title: 'Generating Embeddings', detail: 'Vectorizing via Google Gemini', seconds: 9.0, icon: GeminiIcon },
+  { title: 'Indexing in DB', detail: 'Storing in Pinecone Vector DB', seconds: 9.0, icon: PineconeIcon },
 ] as const;
 
 function getIndexingProgressState(elapsedMs: number) {
