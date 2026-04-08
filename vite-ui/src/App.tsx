@@ -4,6 +4,57 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 const API_DOWN_HELP = `Cannot reach API at ${API_BASE_URL}. Start backend with: python main.py`;
+const API_QUOTA_HELP = 'Your AI API key has reached its usage limit. Please try again shortly, or update billing/use a key with available quota.';
+
+type ApiErrorBody = {
+  detail?: unknown;
+  message?: unknown;
+};
+
+const stringifyApiError = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+      .join(' ')
+      .trim();
+  }
+  if (value && typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return '';
+};
+
+const isQuotaLikeError = (message: string, status: number) => {
+  if (status === 429) return true;
+  const lower = message.toLowerCase();
+  return [
+    'quota',
+    'resource_exhausted',
+    'insufficient_quota',
+    'rate limit',
+    'too many requests',
+    'exceeded your current quota',
+  ].some((token) => lower.includes(token)) || message.includes('429');
+};
+
+const getApiErrorMessage = async (response: Response): Promise<string> => {
+  let detail = '';
+  try {
+    const body = (await response.json()) as ApiErrorBody;
+    detail = stringifyApiError(body.detail ?? body.message ?? body);
+  } catch {
+    detail = await response.text();
+  }
+
+  if (isQuotaLikeError(detail, response.status)) {
+    return API_QUOTA_HELP;
+  }
+
+  const cleaned = detail.trim();
+  if (cleaned) return cleaned;
+  return `Request failed (${response.status}).`;
+};
 
 const SUGGESTED_PROMPTS = [
   "Summarize this in 5 bullet points",
@@ -265,8 +316,8 @@ export default function App() {
         body: formData,
       });
       if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Upload failed (${response.status}): ${err}`);
+        const err = await getApiErrorMessage(response);
+        throw new Error(err);
       }
       const data = await response.json();
       uploadSucceeded = true;
@@ -277,7 +328,7 @@ export default function App() {
       if (error instanceof TypeError) {
         alert(API_DOWN_HELP);
       } else {
-        alert('Failed to upload document');
+        alert(error instanceof Error ? error.message : 'Failed to upload document.');
       }
     } finally {
       if (uploadSucceeded) {
@@ -334,8 +385,8 @@ export default function App() {
         body: JSON.stringify({ query: effectiveQuery, namespace }),
       });
       if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`Query failed (${response.status}): ${err}`);
+        const err = await getApiErrorMessage(response);
+        throw new Error(err);
       }
       const data = await response.json();
       
@@ -348,7 +399,9 @@ export default function App() {
       console.error('Query failed:', error);
       const content = error instanceof TypeError
         ? `${API_DOWN_HELP}`
-        : 'Sorry, I encountered an error processing your request.';
+        : error instanceof Error
+          ? error.message
+          : 'Sorry, I encountered an error processing your request.';
       setMessages(prev => [...prev, { role: 'assistant', content }]);
     } finally {
       setIsTyping(false);
