@@ -209,7 +209,7 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
 
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         temperature=0,
         max_output_tokens=max_output_tokens,
     )
