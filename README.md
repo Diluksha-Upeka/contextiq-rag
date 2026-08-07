@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://contextiq-rag.vercel.app/"><img src="https://img.shields.io/badge/🚀_Live_Demo-contextiq--rag.vercel.app-blueviolet?style=flat-square" alt="Live Demo" /></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" /></a>
   <a href="#tech-stack"><img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" /></a>
   <a href="#tech-stack"><img src="https://img.shields.io/badge/Google%20Gemini-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini" /></a>
@@ -281,6 +282,16 @@ curl -X POST http://localhost:8000/api/query \
 - **Intent-aware depth** — `summary` fetches 8 chunks, `analysis` fetches 5, `qa` fetches 3 for focused answers.
 - **Reference exclusion** — Bibliography-heavy chunks are automatically filtered out unless your query is about citations or references.
 - **Grounded answers** — The LLM is constrained to answer using only retrieved context. If context is insufficient, it says so rather than hallucinating.
+
+---
+
+## Part of a series
+
+This repo is the **product layer** of a three-part exploration of the LLM stack, from math to product:
+
+1. **[llm-stack-from-scratch](https://github.com/Diluksha-Upeka/llm-stack-from-scratch)** — the primitives layer: attention, retrieval, chunking, clustering, and IVF index in pure NumPy.
+2. **[agent-from-scratch](https://github.com/Diluksha-Upeka/agent-from-scratch)** — the orchestration layer: an agentic loop with tool calling and persistent memory, no framework.
+3. **ContextIQ** (this repo) ([live demo](https://contextiq-rag.vercel.app/)) — the product layer: a full RAG app (FastAPI + Gemini + Pinecone) with cited, grounded answers over PDFs.
 
 ---
 
