@@ -6,7 +6,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pinecone import Pinecone, ServerlessSpec
 
 from services.embeddings import embed_texts, get_embedding_dimension, get_embedding_model
-from utils.pdf_loader import load_pdf_text
+from services.hybrid import BM25Corpus, ChunkRecord, set_corpus
+from utils.pdf_loader import load_pdf_pages
 
 
 def _is_reference_like(text: str) -> bool:
@@ -113,12 +114,41 @@ def _get_pinecone_index(expected_dimension: int):
     return pc.Index(chosen_name)
 
 
-def ingest_pdf_bytes(pdf_bytes: bytes, namespace: str, replace_namespace: bool = False) -> None:
+def _assign_page_to_chunk(chunk_text: str, page_boundaries: list[dict]) -> int:
+    """Find which page a chunk most likely belongs to by text overlap."""
+    best_page = 1
+    best_overlap = 0
+    chunk_lower = chunk_text.lower()[:200]  # Use prefix for fast matching
+
+    for pb in page_boundaries:
+        page_lower = pb["text"].lower()
+        # Simple heuristic: check how much of the chunk prefix appears in the page
+        overlap = 0
+        words = chunk_lower.split()[:20]
+        for word in words:
+            if word in page_lower:
+                overlap += 1
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_page = pb["page"]
+    return best_page
+
+
+def ingest_pdf_bytes(
+    pdf_bytes: bytes,
+    namespace: str,
+    replace_namespace: bool = False,
+    document_name: str = "document.pdf",
+) -> dict:
     """Extract, chunk, embed, and upsert PDF text into Pinecone.
 
     If replace_namespace is True, the target namespace is cleared first.
+    Also builds an in-memory BM25 index for hybrid retrieval.
+
+    Returns metadata about the ingested document.
     """
-    raw_text = load_pdf_text(pdf_bytes)
+    pages = load_pdf_pages(pdf_bytes)
+    raw_text = "\n\n".join(p["text"] for p in pages)
     if not raw_text.strip():
         raise ValueError("No extractable text found in PDF")
 
@@ -128,6 +158,9 @@ def ingest_pdf_bytes(pdf_bytes: bytes, namespace: str, replace_namespace: bool =
         separators=["\n\n", "\n", " ", ""],
     )
     chunks = splitter.split_text(raw_text)
+
+    # Assign page numbers to each chunk
+    chunk_pages = [_assign_page_to_chunk(chunk, pages) for chunk in chunks]
 
     embeddings = get_embedding_model()
     dimension = get_embedding_dimension()
@@ -145,15 +178,45 @@ def ingest_pdf_bytes(pdf_bytes: bytes, namespace: str, replace_namespace: bool =
 
     vectors = embed_texts(embeddings, chunks)
     payload = []
-    for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
+    bm25_records: list[ChunkRecord] = []
+
+    for i, (chunk, vector, page) in enumerate(zip(chunks, vectors, chunk_pages)):
+        chunk_id = f"{namespace}-{uuid.uuid4().hex}-{i}"
+        is_ref = _is_reference_like(chunk)
+
         payload.append(
             (
-                f"{namespace}-{uuid.uuid4().hex}-{i}",
+                chunk_id,
                 vector,
                 {
                     "text": chunk,
-                    "is_reference": _is_reference_like(chunk),
+                    "page": page,
+                    "chunk_index": i,
+                    "document_name": document_name,
+                    "is_reference": is_ref,
                 },
             )
         )
+
+        bm25_records.append(ChunkRecord(
+            chunk_id=chunk_id,
+            text=chunk,
+            page=page,
+            chunk_index=i,
+            document_name=document_name,
+            is_reference=is_ref,
+        ))
+
     index.upsert(vectors=payload, namespace=namespace)
+
+    # Build BM25 index for hybrid retrieval
+    corpus = BM25Corpus(records=bm25_records)
+    corpus.build_index()
+    set_corpus(namespace, corpus)
+
+    return {
+        "pages": len(pages),
+        "chunks": len(chunks),
+        "document_name": document_name,
+        "namespace": namespace,
+    }
