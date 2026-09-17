@@ -459,7 +459,7 @@ def run_rag_pipeline(
             "is_grounded": True,
             "intent": intent,
             "is_unanswerable": True,
-            "retrieval_trace": None,
+            "retrieval_trace": asdict(trace),
         }
 
     # Generation stage
@@ -549,7 +549,7 @@ Corrected Grounded Answer:"""
         "unsupported_claims": grounding.unsupported_claims,
         "intent": intent,
         "is_unanswerable": False,
-        "retrieval_trace": None,
+        "retrieval_trace": asdict(trace),
     }
 
 
