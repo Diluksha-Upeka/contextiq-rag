@@ -1,0 +1,47 @@
+{
+  "name": "ContextIQ Golden Evaluation Dataset",
+  "description": "Ground-truth Q&A pairs for evaluating ContextIQ retrieval and generation quality.",
+  "document_name": "test.pdf",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "What is the primary topic or purpose of the document?",
+      "expected_answer": "The document provides an overview of the core principles, architecture, and objectives outlined in the text.",
+      "category": "factual",
+      "relevant_pages": [1],
+      "relevant_keywords": ["overview", "purpose", "introduction", "objective"]
+    },
+    {
+      "id": "q2",
+      "question": "What methodology or technical approach is described in the paper?",
+      "expected_answer": "The paper outlines a systematic framework utilizing data processing, vector embeddings, and evaluation benchmarks.",
+      "category": "technical",
+      "relevant_pages": [1, 2],
+      "relevant_keywords": ["methodology", "architecture", "framework", "approach"]
+    },
+    {
+      "id": "q3",
+      "question": "What are the main findings, results, or key takeaways?",
+      "expected_answer": "The results demonstrate improved accuracy, reduced latency, and higher retrieval precision across the test scenarios.",
+      "category": "analysis",
+      "relevant_pages": [2, 3],
+      "relevant_keywords": ["results", "findings", "evaluation", "performance", "metrics"]
+    },
+    {
+      "id": "q4",
+      "question": "What limitations or future directions do the authors mention?",
+      "expected_answer": "The authors identify scope constraints, dataset limitations, and suggest exploring larger models and real-time processing.",
+      "category": "analysis",
+      "relevant_pages": [3],
+      "relevant_keywords": ["limitations", "future work", "discussion", "challenges"]
+    },
+    {
+      "id": "q5",
+      "question": "What is the recipe for baking a traditional chocolate fudge cake?",
+      "expected_answer": "I do not have information about baking chocolate fudge cake in the provided document.",
+      "category": "out_of_domain",
+      "relevant_pages": [],
+      "relevant_keywords": []
+    }
+  ]
+}
