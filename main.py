@@ -1,24 +1,34 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import os
 import re
 from dotenv import load_dotenv
 
+from evaluation.api import router as eval_router
 from services.embeddings import get_embedding_model
 from services.ingest import ingest_pdf_bytes
 from services.retrieval import (
+    CONFIDENCE_THRESHOLD,
     detect_query_intent,
     generate_answer,
     normalize_source_text,
     retrieve_chunks,
+    run_rag_pipeline,
     top_k_for_intent,
 )
 
 load_dotenv()
 
-app = FastAPI(title="ContextIQ API")
+app = FastAPI(
+    title="ContextIQ API",
+    description="Engineered RAG System with Hybrid Retrieval, Reranking, Grounding & Evaluation Lab",
+    version="2.0.0",
+)
+
+# Mount evaluation router
+app.include_router(eval_router)
 
 
 def _parse_retry_after_seconds(message: str) -> int | None:
@@ -66,7 +76,8 @@ def _raise_friendly_quota_error(exc: Exception) -> None:
     detail += " If this keeps happening, add billing or switch to a key with available quota."
     raise HTTPException(status_code=429, detail=detail)
 
-# Allow requests from local frontend dev servers (Vite/Next).
+
+# Allow requests from local frontend dev servers (Vite/Next) and production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -84,55 +95,120 @@ app.add_middleware(
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "features": {
+            "hybrid_search": True,
+            "cross_encoder_rerank": True,
+            "grounding_validation": True,
+            "evaluation_lab": True,
+        },
+    }
+
 
 class QueryRequest(BaseModel):
     query: str
-    namespace: str
+    namespace: str = "latest"
+    top_k: Optional[int] = None
+
 
 class Source(BaseModel):
     id: int
     text: str
+    full_text: Optional[str] = None
+    page: Optional[int] = 1
+    chunk_index: Optional[int] = 0
+    document_name: Optional[str] = "document.pdf"
+    relevance_score: Optional[float] = 0.0
+    chunk_id: Optional[str] = None
+    source_type: Optional[str] = "dense"
+
+
+class RetrievalTraceModel(BaseModel):
+    dense_candidates: int
+    bm25_candidates: int
+    rrf_merged: int
+    reranked_top: int
+    retrieval_ms: int
+    rerank_ms: int
+    generation_ms: int
+    grounding_ms: int
+    total_ms: int
+
 
 class QueryResponse(BaseModel):
     answer: str
     sources: List[Source]
+    confidence: Optional[float] = 1.0
+    is_grounded: Optional[bool] = True
     intent: str
+    is_unanswerable: Optional[bool] = False
+    retrieval_trace: Optional[RetrievalTraceModel] = None
+
 
 @app.post("/api/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    filename = (file.filename or "").lower()
-    if not filename.endswith(".pdf"):
+    filename = (file.filename or "document.pdf")
+    if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-    
+
     try:
         content = await file.read()
-        # Use a hardcoded namespace for the demo, or generate a UUID if handling multi-users
         namespace = "latest"
-        ingest_pdf_bytes(content, namespace=namespace, replace_namespace=True)
-        return {"message": "Successfully indexed PDF", "namespace": namespace}
+        ingest_info = ingest_pdf_bytes(
+            content,
+            namespace=namespace,
+            replace_namespace=True,
+            document_name=filename,
+        )
+        return {
+            "message": "Successfully indexed PDF",
+            "namespace": namespace,
+            "pages": ingest_info.get("pages", 1),
+            "chunks": ingest_info.get("chunks", 1),
+            "document_name": filename,
+        }
     except Exception as e:
         _raise_friendly_quota_error(e)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/query", response_model=QueryResponse)
 async def query_pdf(request: QueryRequest):
     try:
-        embeddings = get_embedding_model()
-        intent = detect_query_intent(request.query)
-        contexts = retrieve_chunks(
-            embeddings=embeddings,
+        pipeline_output = run_rag_pipeline(
             query=request.query,
             namespace=request.namespace,
-            top_k=top_k_for_intent(intent),
+            top_k=request.top_k,
         )
-        answer = generate_answer(query=request.query, contexts=contexts, intent=intent)
-        
-        sources = [{"id": i, "text": normalize_source_text(chunk)} for i, chunk in enumerate(contexts, start=1)]
-        return QueryResponse(answer=answer, sources=sources, intent=intent)
+        return QueryResponse(
+            answer=pipeline_output["answer"],
+            sources=[
+                Source(
+                    id=s["id"],
+                    text=s["text"],
+                    full_text=s.get("full_text"),
+                    page=s.get("page", 1),
+                    chunk_index=s.get("chunk_index", 0),
+                    document_name=s.get("document_name", "document.pdf"),
+                    relevance_score=s.get("relevance_score", 0.0),
+                    chunk_id=s.get("chunk_id"),
+                    source_type=s.get("source_type", "dense"),
+                )
+                for s in pipeline_output["sources"]
+            ],
+            confidence=pipeline_output.get("confidence", 1.0),
+            is_grounded=pipeline_output.get("is_grounded", True),
+            intent=pipeline_output.get("intent", "qa"),
+            is_unanswerable=pipeline_output.get("is_unanswerable", False),
+            retrieval_trace=RetrievalTraceModel(**pipeline_output["retrieval_trace"])
+            if pipeline_output.get("retrieval_trace")
+            else None,
+        )
     except Exception as e:
         _raise_friendly_quota_error(e)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
