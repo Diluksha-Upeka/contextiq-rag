@@ -295,6 +295,33 @@ This repo is the **product layer** of a three-part exploration of the LLM stack,
 
 ---
 
+
+---
+
+## 🔬 Tier 1 RAG Engineering & Evaluation Lab
+
+ContextIQ features a production-grade multi-stage retrieval architecture and an integrated developer **Evaluation Lab**:
+
+### 1. Hybrid Retrieval & Fusion
+- **Dense Vector Search**: Google Gemini embeddings stored in Pinecone serverless vector index with cosine similarity.
+- **Sparse Keyword Search**: In-memory BM25Okapi index dynamically built during ingestion.
+- **Reciprocal Rank Fusion (RRF)**: Merges candidates using rank-reciprocal scoring ($RRF(d) = \sum \frac{1}{60 + r_i}$) to combine semantic nuance with exact keyword matching.
+
+### 2. Cross-Encoder Reranking
+- Top candidates are scored by `cross-encoder/ms-marco-MiniLM-L-6-v2` to evaluate full (query, document) joint representations.
+- Raw logits are calibrated to $[0.0, 1.0]$ confidence probabilities via sigmoid mapping.
+
+### 3. Factual Grounding & Confidence Thresholding
+- **"I Don't Know" Fallback**: Queries with low reranker confidence (<0.30) return an explicit out-of-context message.
+- **Grounding Validation**: Extracted claims are verified against retrieved context chunks using LLM-as-a-judge with an automatic single-pass correction for hallucinated claims.
+
+### 4. Evaluation Lab (`#/eval`)
+- **IR Retrieval Metrics**: Recall@K, Precision@K, MRR (Mean Reciprocal Rank), and nDCG@K (ranking quality).
+- **Generation Quality**: Faithfulness, Answer Relevance, and Context Relevance.
+- **Side-by-Side Comparison**: Benchmark Baseline Dense vs Hybrid vs Hybrid+Reranker side-by-side.
+- **Golden Dataset Manager**: Curate ground-truth test questions, categories, and target page references.
+
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
