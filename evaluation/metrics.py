@@ -83,11 +83,13 @@ def _get_judge_llm() -> ChatGoogleGenerativeAI:
     api_key = os.getenv("GOOGLE_API_KEY", "").strip()
     if not api_key:
         raise ValueError("GOOGLE_API_KEY is not set")
+    model = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model=model,
         temperature=0.0,
         max_output_tokens=1024,
     )
+
 
 
 def _extract_json_response(text: str) -> dict[str, Any] | None:

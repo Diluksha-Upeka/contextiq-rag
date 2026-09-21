@@ -221,11 +221,13 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     if not api_key:
         raise ValueError("GOOGLE_API_KEY is not set")
     max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
+    model = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
     return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model=model,
         temperature=0.0,
         max_output_tokens=max_output_tokens,
     )
+
 
 
 def _as_text(content) -> str:
