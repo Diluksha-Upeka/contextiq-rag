@@ -119,7 +119,7 @@ export default function EvalLab({ onBackToChat }: { onBackToChat: () => void }) 
   // Configuration form state
   const [retrievalMode, setRetrievalMode] = useState<string>('hybrid_rerank');
   const [topK, setTopK] = useState<number>(5);
-  const [runJudge, setRunJudge] = useState<boolean>(true);
+  const [runJudge, setRunJudge] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [comparingLoading, setComparingLoading] = useState<boolean>(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({});
@@ -430,7 +430,7 @@ export default function EvalLab({ onBackToChat }: { onBackToChat: () => void }) 
                   className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="judgeToggle" className="text-xs text-slate-300 font-medium cursor-pointer">
-                  Run Gemini LLM Judge (Faithfulness & Relevance)
+                  Run Gemini LLM Judge (Faithfulness & Relevance) — <span className="text-amber-500 font-semibold">Consumes API Quota</span>
                 </label>
               </div>
             </div>

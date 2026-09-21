@@ -213,21 +213,28 @@ def _get_pinecone_index():
 
 
 # ---------------------------------------------------------------------------
-# LLM Client
-# ---------------------------------------------------------------------------
+CANDIDATE_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+]
 
-def _get_llm() -> ChatGoogleGenerativeAI:
+
+def _get_llm(model_name: str | None = None) -> ChatGoogleGenerativeAI:
     api_key = os.getenv("GOOGLE_API_KEY", "").strip()
     if not api_key:
         raise ValueError("GOOGLE_API_KEY is not set")
     max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
-    model = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
+    chosen_model = model_name or os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
     return ChatGoogleGenerativeAI(
-        model=model,
+        model=chosen_model,
         temperature=0.0,
         max_output_tokens=max_output_tokens,
+        max_retries=0,
     )
-
 
 
 def _as_text(content) -> str:
@@ -246,6 +253,39 @@ def _as_text(content) -> str:
     return str(content)
 
 
+def _invoke_resilient_llm(prompt: str, max_output_tokens: int = 2048) -> str:
+    """Invoke Gemini with automatic model failover across lite/flash models."""
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY is not set")
+
+    primary = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
+    models_to_try = [primary] + [m for m in CANDIDATE_MODELS if m != primary]
+
+    last_exc = None
+    for model_name in models_to_try:
+        try:
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                temperature=0.0,
+                max_output_tokens=max_output_tokens,
+                max_retries=0,
+            )
+            response = llm.invoke(prompt)
+            return _as_text(response.content).strip()
+        except Exception as e:
+            err_str = str(e).lower()
+            last_exc = e
+            if any(marker in err_str for marker in ["429", "quota", "resource_exhausted", "404", "not found"]):
+                continue
+            raise e
+
+    if last_exc:
+        raise last_exc
+    return ""
+
+
+
 # ---------------------------------------------------------------------------
 # Grounding Validation
 # ---------------------------------------------------------------------------
@@ -260,7 +300,6 @@ def validate_grounding(answer: str, contexts: list[str]) -> GroundingResult:
             reasoning="Empty answer or contexts",
         )
 
-    llm = _get_llm()
     context_block = "\n\n".join([f"[{i+1}] {ctx}" for i, ctx in enumerate(contexts[:5])])
 
     prompt = f"""You are a strict factual grounding validator for a RAG system.
@@ -286,8 +325,7 @@ Respond ONLY with valid JSON:
 }}
 """
     try:
-        response = llm.invoke(prompt)
-        text = _as_text(response.content).strip()
+        text = _invoke_resilient_llm(prompt, max_output_tokens=1024)
         match = re.search(r"(\{.*\})", text, re.DOTALL)
         if match:
             data = json.loads(match.group(1))
@@ -297,7 +335,9 @@ Respond ONLY with valid JSON:
                 unsupported_claims=list(data.get("unsupported_claims", [])),
                 reasoning=str(data.get("reasoning", "")),
             )
-    except Exception as e:
+    except Exception:
+        pass
+
         pass
 
     return GroundingResult(
@@ -498,9 +538,7 @@ Question: {query}
 
 Answer:"""
 
-    llm = _get_llm()
-    gen_response = llm.invoke(prompt)
-    answer = _as_text(gen_response.content).strip()
+    answer = _invoke_resilient_llm(prompt, max_output_tokens=2048)
     generation_ms = int((time.time() - t_gen_start) * 1000)
 
     # Grounding validation stage
@@ -522,7 +560,7 @@ Original Answer:
 
 Corrected Grounded Answer:"""
         try:
-            corrected = _as_text(llm.invoke(correction_prompt).content).strip()
+            corrected = _invoke_resilient_llm(correction_prompt, max_output_tokens=2048)
             if corrected:
                 answer = corrected
                 grounding.is_grounded = True
@@ -594,7 +632,6 @@ def retrieve_chunks(embeddings, query: str, namespace: str, top_k: int = 5) -> l
 
 def generate_answer(query: str, contexts: list[str], intent: Intent = "qa") -> str:
     """Backward-compatible simple generation function."""
-    llm = _get_llm()
     if not contexts:
         return "I could not find relevant context in the document."
 
@@ -608,5 +645,5 @@ def generate_answer(query: str, contexts: list[str], intent: Intent = "qa") -> s
         f"Question: {query}\n\n"
         "Answer:"
     )
-    response = llm.invoke(prompt)
-    return _as_text(response.content).strip()
+    return _invoke_resilient_llm(prompt, max_output_tokens=2048)
+
